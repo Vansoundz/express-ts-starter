@@ -1,10 +1,15 @@
 import { config } from "dotenv";
-import { Router, Request, Response } from "express";
-import { check, validationResult } from "express-validator";
+import { Router } from "express";
+import { check } from "express-validator";
 import { mkdirSync } from "fs";
 import multer from "multer";
-import User from "../models/user.model";
-import bcrypt from "bcrypt";
+import {
+  getUser,
+  login,
+  register,
+  updateProfile,
+} from "../controllers/user.controller";
+import authMiddleware from "../middleware/auth.middleware";
 
 const router = Router();
 
@@ -43,14 +48,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 // const singleUpload = upload.single("image");
 
-router.get(`/`, async (req: Request, res: Response) => {
-  try {
-    let users = await User.find({});
-    res.json({ users });
-  } catch (error) {
-    res.status(500).json({ errors: [{ msg: "Server error" }] });
-  }
-});
+router.get(`/`, getUser);
 
 router.post(
   `/register`,
@@ -63,42 +61,11 @@ router.post(
       .withMessage("password should be more than 6 characters long"),
     check("email").isEmail().withMessage("email is invalid"),
   ],
-  async (req: Request, res: Response) => {
-    const result = validationResult(req);
-    if (!result.isEmpty()) {
-      return res.status(400).json({ errors: result.array() });
-    }
-    try {
-      let user = await User.findOne({ email: req.body.email });
-
-      if (user) {
-        return res
-          .status(400)
-          .json({ errors: [{ msg: "email is taken", param: "email" }] });
-      }
-
-      user = await User.findOne({ username: req.body.username });
-      if (user) {
-        return res
-          .status(400)
-          .json({ errors: [{ msg: "username is taken", param: "username" }] });
-      }
-
-      user = new User({ ...req.body });
-
-      let salt = await bcrypt.genSalt(10);
-      // @ts-ignore
-      user.password = await bcrypt.hash(req.body.password, salt);
-
-      await user.save();
-
-      user = await User.findById(user.id).select("-password");
-      res.json({ user });
-    } catch (error) {
-      console.log(error);
-      res.status(500).json({ errors: [{ msg: "Server error" }] });
-    }
-  }
+  register
 );
+
+router.post("/login", login);
+
+router.post("/", [authMiddleware, upload.single("image")], updateProfile);
 
 export default router;
